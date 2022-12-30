@@ -1,0 +1,15 @@
+server:
+  port: 38090
+
+spring:
+  profiles:
+    default: dev
+
+  application:
+    name: consumer-app
+  cloud:
+    zookeeper:
+      connect-string: ${host}:2181
+      discovery:
+        enabled: true
+        register: true
