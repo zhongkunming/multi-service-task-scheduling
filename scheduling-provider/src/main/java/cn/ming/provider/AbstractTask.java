@@ -147,7 +147,7 @@ public abstract class AbstractTask {
 
     private void saveLog(Exception e) {
         SysTaskLog sysTaskLog = new SysTaskLog();
-        sysTaskLog.setServerName(SystemUtil.getHostInfo().getName());
+        sysTaskLog.setServerName(SystemUtil.getHostInfo().getAddress());
         sysTaskLog.setTaskId(taskId);
         sysTaskLog.setTaskName(sysTask.getName());
         sysTaskLog.setScheduleId(Dispatch.TASK_SCHEDULE_MAPPING.get(taskId));
