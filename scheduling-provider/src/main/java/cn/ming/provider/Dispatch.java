@@ -8,6 +8,8 @@ import cn.hutool.cron.task.Task;
 import cn.hutool.extra.spring.EnableSpringUtil;
 import cn.hutool.extra.spring.SpringUtil;
 import cn.ming.provider.model.SysTask;
+import cn.ming.provider.model.SysTaskConfig;
+import cn.ming.provider.repository.SysTaskConfigRepository;
 import cn.ming.provider.repository.SysTaskRepository;
 import jakarta.annotation.Resource;
 import jakarta.validation.constraints.NotBlank;
@@ -22,6 +24,7 @@ import org.springframework.stereotype.Component;
 
 import java.util.List;
 import java.util.Map;
+import java.util.Optional;
 import java.util.concurrent.ConcurrentHashMap;
 
 @Slf4j
@@ -31,13 +34,15 @@ public class Dispatch implements ApplicationListener<ApplicationEvent> {
 
     public static final Map<Long, String> TASK_SCHEDULE_MAPPING = new ConcurrentHashMap<>();
     public static final String SYS_TASK_COUNTER = "SYS:TASK:COUNTER";
-    public static final String SYS_TASK_TASK_COUNTER_STEP = "SYS:TASK:COUNTER:STEP";
-    public static long SYS_TASK_TASK_COUNTER_STEP_INTERVAL = 1;
+    public static final long SYS_TASK_TASK_COUNTER_STEP_INTERVAL = 1;
 
     @Resource
     private RedissonClient redissonClient;
     @Resource
     private SysTaskRepository sysTaskRepository;
+
+    @Resource
+    private SysTaskConfigRepository sysTaskConfigRepository;
 
     @Override
     public void onApplicationEvent(@NotNull ApplicationEvent event) {
@@ -56,9 +61,10 @@ public class Dispatch implements ApplicationListener<ApplicationEvent> {
     }
 
     private void stop() {
-        redissonClient.getAtomicLong(SYS_TASK_COUNTER).decrementAndGet();
+        decrTaskCounter();
         CronUtil.stop();
     }
+
     private void initializeAllTasks() {
         List<SysTask> tasks = sysTaskRepository.findAll();
         if (CollectionUtil.isEmpty(tasks)) {
@@ -84,8 +90,8 @@ public class Dispatch implements ApplicationListener<ApplicationEvent> {
 
     private void startDispatch() {
         CronUtil.start(false);
-        redissonClient.getAtomicLong(SYS_TASK_COUNTER).incrementAndGet();
-        Dispatch.SYS_TASK_TASK_COUNTER_STEP_INTERVAL = redissonClient.getAtomicLong(SYS_TASK_TASK_COUNTER_STEP).incrementAndGet();
+        initTaskCounter();
+        incrTaskCounter();
     }
 
     private void loadTaskToDispatch(SysTask task) {
@@ -102,7 +108,7 @@ public class Dispatch implements ApplicationListener<ApplicationEvent> {
             actuallyTask.run(task.getId());
         });
         TASK_SCHEDULE_MAPPING.put(task.getId(), scheduleId);
-        log.info("当前 JVM taskName: {}, taskName: {} -> scheduleId: {}", task.getId(), task.getName(), scheduleId);
+        log.info("当前 JVM taskId: {}, taskName: {}, scheduleId: {}", task.getId(), task.getName(), scheduleId);
     }
 
 
@@ -112,6 +118,32 @@ public class Dispatch implements ApplicationListener<ApplicationEvent> {
         } catch (Exception e) {
             log.info("Cron 表达式验证未通过: {}, {}", cron, e.getMessage());
             throw new RuntimeException("Cron 表达式验证未通过: " + cron + ", " + e.getMessage());
+        }
+    }
+    private void initTaskCounter() {
+        Optional<SysTaskConfig> optional = sysTaskConfigRepository.findById(SYS_TASK_COUNTER);
+        if (optional.isEmpty()) {
+            SysTaskConfig sysTaskConfig = new SysTaskConfig();
+            sysTaskConfig.setKey(SYS_TASK_COUNTER);
+            sysTaskConfig.setValue("0");
+            sysTaskConfigRepository.saveAndFlush(sysTaskConfig);
+        }
+    }
+    private void incrTaskCounter() {
+        sysTaskConfigRepository.incrTaskCounter();
+        Optional<SysTaskConfig> optional = sysTaskConfigRepository.findById(SYS_TASK_COUNTER);
+        if (optional.isPresent()) {
+            SysTaskConfig sysTaskCounter = optional.get();
+            redissonClient.getAtomicLong(SYS_TASK_COUNTER).set(Long.parseLong(sysTaskCounter.getValue()));
+        }
+    }
+
+    private void decrTaskCounter() {
+        sysTaskConfigRepository.decrTaskCounter();
+        Optional<SysTaskConfig> optional = sysTaskConfigRepository.findById(SYS_TASK_COUNTER);
+        if (optional.isPresent()) {
+            SysTaskConfig sysTaskCounter = optional.get();
+            redissonClient.getAtomicLong(SYS_TASK_COUNTER).set(Long.parseLong(sysTaskCounter.getValue()));
         }
     }
 }

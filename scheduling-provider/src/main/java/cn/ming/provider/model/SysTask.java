@@ -3,13 +3,13 @@ package cn.ming.provider.model;
 import jakarta.persistence.Column;
 import jakarta.persistence.Entity;
 import jakarta.persistence.GeneratedValue;
-import jakarta.persistence.GenerationType;
 import jakarta.persistence.Id;
 import jakarta.persistence.Table;
 import lombok.Getter;
 import lombok.RequiredArgsConstructor;
 import lombok.Setter;
 import lombok.ToString;
+import org.hibernate.annotations.GenericGenerator;
 
 import java.io.Serial;
 import java.io.Serializable;
@@ -25,7 +25,8 @@ public class SysTask implements Serializable {
      * 任务ID
      */
     @Id
-    @GeneratedValue(strategy = GenerationType.AUTO)
+    @GeneratedValue(generator = "sys_task_pk")
+    @GenericGenerator(name = "sys_task_pk", strategy = "assigned")
     @Column(name = "id", unique = true, nullable = false)
     private Long id;
 

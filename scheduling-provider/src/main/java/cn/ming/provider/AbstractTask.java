@@ -29,13 +29,13 @@ import static cn.ming.provider.Dispatch.SYS_TASK_COUNTER;
 public abstract class AbstractTask {
 
     @Resource
-    RedissonClient redissonClient;
+    private RedissonClient redissonClient;
 
     @Resource
-    SysTaskRepository sysTaskRepository;
+    private SysTaskRepository sysTaskRepository;
 
     @Resource
-    SysTaskLogRepository sysTaskLogRepository;
+    private SysTaskLogRepository sysTaskLogRepository;
 
     private Long taskId;
 
@@ -71,11 +71,8 @@ public abstract class AbstractTask {
 
                 semaphore.trySetPermits(1);
                 long point = mCounter.get();
-                if (waitList.size() == 0) {
-                    boolean b = latch.trySetCount(point);
-                    if (b) {
-                        log.info("任务执行, taskId: {}，设置latch", taskId);
-                    }
+                if (waitList.size() == 0 && latch.trySetCount(point)) {
+                    log.info("为 {}，设置latch", sysTask.getName());
                 }
                 if (waitList.size() < point) {
                     waitList.add(NetUtil.getLocalMacAddress());
@@ -90,7 +87,7 @@ public abstract class AbstractTask {
                 }
                 waitList.clear();
                 long runCounter = taskRunCounter.get();
-                log.info("准备执行, taskId: {}，准备争抢执行锁", taskId);
+                log.info("争抢 {} 执行锁", sysTask.getName());
                 String id = semaphore.tryAcquire();
                 try {
                     if (StrUtil.isBlank(id)) {
@@ -98,11 +95,9 @@ public abstract class AbstractTask {
                     }
                     long newCounter = runCounter + Dispatch.SYS_TASK_TASK_COUNTER_STEP_INTERVAL;
                     boolean b = taskRunCounter.compareAndSet(runCounter, newCounter);
-                    if (b) {
-                        if (taskRunCounter.get() == newCounter) {
-                            log.info("获取到执行权");
-                            schedule1(args);
-                        }
+                    if (b && taskRunCounter.get() == newCounter) {
+                        log.info("获取到 {} 执行权", sysTask.getName());
+                        schedule1(args);
                     }
                 } finally {
                     if (StrUtil.isNotBlank(id)) {
@@ -113,7 +108,7 @@ public abstract class AbstractTask {
         }
     }
 
-    public final void schedule(Long taskId,String... args) {
+    public final void schedule(Long taskId, String... args) {
         try {
             this.taskId = taskId;
             this.prepare();

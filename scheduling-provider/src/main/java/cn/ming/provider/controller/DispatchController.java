@@ -27,7 +27,7 @@ public class DispatchController {
 
     @PostMapping("run1/{taskId}")
     public Map<String, String> test(@PathVariable Long taskId) {
-        Map<String, String> map = new HashMap<>();
+        Map<String, String> map = new HashMap<>(1);
         map.put("code", "500");
 
         Optional<SysTask> optionalSysTask = sysTaskRepository.findById(taskId);
