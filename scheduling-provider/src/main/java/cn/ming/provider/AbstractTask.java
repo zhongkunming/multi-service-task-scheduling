@@ -63,36 +63,36 @@ public abstract class AbstractTask {
             if (sysTask.getConcurrent()) {
                 schedule1(args);
             } else {
-                RList<Object> waitList = redissonClient.getList(lockName() + ":WAIT_LIST");
-                RCountDownLatch latch = redissonClient.getCountDownLatch(lockName() + ":COUNT_DOWN_LATCH");
-                RPermitExpirableSemaphore semaphore = redissonClient.getPermitExpirableSemaphore(lockName() + ":RUN_LOCK");
+                RList<Object> taskWaitList = redissonClient.getList(lockName() + ":WAIT_LIST");
+                RCountDownLatch taskRunLatch = redissonClient.getCountDownLatch(lockName() + ":COUNT_DOWN_LATCH");
+                RPermitExpirableSemaphore taskRunSemaphore = redissonClient.getPermitExpirableSemaphore(lockName() + ":RUN_LOCK");
                 RAtomicLong taskRunCounter = redissonClient.getAtomicLong(lockName() + ":RUN_COUNTER");
-                RAtomicLong mCounter = redissonClient.getAtomicLong(SYS_TASK_COUNTER);
+                RAtomicLong instanceCounter = redissonClient.getAtomicLong(SYS_TASK_COUNTER);
 
-                semaphore.trySetPermits(1);
-                long point = mCounter.get();
-                if (waitList.size() == 0 && latch.trySetCount(point)) {
-                    log.info("为 {}，设置latch", sysTask.getName());
+                taskRunSemaphore.trySetPermits(1);
+                long point = instanceCounter.get();
+                if (taskWaitList.size() == 0 && taskRunLatch.trySetCount(point)) {
+                    log.info("为 {}，设置RunLatch", sysTask.getName());
                 }
-                if (waitList.size() < point) {
-                    waitList.add(NetUtil.getLocalMacAddress());
-                    latch.countDown();
+                if (taskWaitList.size() < point) {
+                    taskWaitList.add(NetUtil.getLocalMacAddress());
+                    taskRunLatch.countDown();
                     try {
-                        latch.await();
+                        taskRunLatch.await();
                     } catch (InterruptedException e) {
                         throw new RuntimeException(e);
                     }
                 } else {
-                    latch.countDown();
+                    taskRunLatch.countDown();
                 }
-                waitList.clear();
+                taskWaitList.clear();
                 long runCounter = taskRunCounter.get();
                 log.info("争抢 {} 执行锁", sysTask.getName());
-                String id = semaphore.tryAcquire();
+                String id = taskRunSemaphore.tryAcquire();
+                if (StrUtil.isBlank(id)) {
+                    return;
+                }
                 try {
-                    if (StrUtil.isBlank(id)) {
-                        return;
-                    }
                     long newCounter = runCounter + Dispatch.SYS_TASK_TASK_COUNTER_STEP_INTERVAL;
                     boolean b = taskRunCounter.compareAndSet(runCounter, newCounter);
                     if (b && taskRunCounter.get() == newCounter) {
@@ -100,9 +100,7 @@ public abstract class AbstractTask {
                         schedule1(args);
                     }
                 } finally {
-                    if (StrUtil.isNotBlank(id)) {
-                        semaphore.release(id);
-                    }
+                    taskRunSemaphore.release(id);
                 }
             }
         }
